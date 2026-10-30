@@ -168,13 +168,27 @@ class Studio:
         self._build_top()
         self._build_settings()
         self._build_panels()
-        self.rooms_row = ft.Row(spacing=10, wrap=True, vertical_alignment=ft.CrossAxisAlignment.START)
+        self.rooms_row = ft.Row(
+            spacing=10,
+            wrap=True,
+            vertical_alignment=ft.CrossAxisAlignment.START,
+        )
+        self._chat_n = 0
+        self._gift_n = 0
+        self._csv_offsets: dict[str, int] = {}
+        # 主列：顶栏/设置/房间可滚动，下面列表撑满剩余高度
         self.page.add(
-            self.top,
-            self.settings,
-            ft.Text("直播间", weight=ft.FontWeight.BOLD),
-            self.rooms_row,
-            self.panels,
+            ft.Column(
+                [
+                    self.top,
+                    self.settings,
+                    ft.Text("直播间", weight=ft.FontWeight.BOLD),
+                    self.rooms_row,
+                    self.panels,
+                ],
+                expand=True,
+                spacing=10,
+            )
         )
         self._refresh_env()
         _ensure_cookie()
@@ -186,9 +200,7 @@ class Studio:
         self._install_log_handler()
 
     def _csv_poll_loop(self) -> None:
-        """定期从 data/*/session/*.csv 尾部读入 UI，弥补钩子/缓冲延迟。"""
-        seen_chat: set[str] = set()
-        seen_gift: set[str] = set()
+        """按文件偏移只读新增行，避免大文件重读和 seen 集合膨胀。"""
         while True:
             time.sleep(2.0)
             try:
@@ -196,28 +208,38 @@ class Studio:
                 if not base.is_dir():
                     continue
                 for gift_f in base.rglob("gift.csv"):
-                    self._tail_csv(gift_f, seen_gift, "gift")
+                    self._tail_csv(gift_f, "gift")
                 for chat_f in base.rglob("chat.csv"):
-                    self._tail_csv(chat_f, seen_chat, "chat")
+                    self._tail_csv(chat_f, "chat")
             except Exception:
                 pass
 
-    def _tail_csv(self, path: Path, seen: set, kind: str) -> None:
+    def _tail_csv(self, path: Path, kind: str) -> None:
         try:
-            # 只读最后 64KB
-            data = path.read_bytes()[-65536:]
-            text = data.decode("utf-8", errors="replace")
+            key = str(path)
+            size = path.stat().st_size
+            if size <= 0:
+                return
+            off = self._csv_offsets.get(key)
+            if off is None or off > size:
+                off = max(0, size - 4096)
+            with open(path, "rb") as f:
+                f.seek(off)
+                chunk = f.read()
+                new_off = f.tell()
+            if not chunk:
+                self._csv_offsets[key] = new_off
+                return
+            self._csv_offsets[key] = new_off
+            text = chunk.decode("utf-8", errors="replace")
+            # 丢弃可能不完整的首行
             lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-            if not lines or lines[0].startswith("time,"):
+            if lines and lines[0].startswith("time,"):
                 lines = lines[1:]
-            for ln in lines[-80:]:
-                if ln in seen:
-                    continue
-                seen.add(ln)
-                if len(seen) > 2000:
-                    seen.clear()
+            if off > 0 and lines:
+                lines = lines[1:]
+            for ln in lines[-50:]:
                 if kind == "gift":
-                    # time,user_id,user_name,to_user_id,to_user_name,gift_name,...
                     parts = ln.split(",")
                     if len(parts) >= 6:
                         name, gname = parts[2], parts[5]
@@ -230,7 +252,6 @@ class Studio:
                     else:
                         self.events.put(("gift", ln))
                 else:
-                    # time,user_id,user_name,content,...
                     parts = ln.split(",", 3)
                     if len(parts) >= 4:
                         name, content = parts[2], parts[3].rstrip(",")
@@ -367,9 +388,10 @@ class Studio:
         )
 
     def _build_panels(self) -> None:
-        self.chat_list = ft.ListView(auto_scroll=True, height=220, spacing=2)
-        self.gift_list = ft.ListView(auto_scroll=True, height=220, spacing=2)
-        self.log_list = ft.ListView(auto_scroll=True, height=160, spacing=1)
+        # 固定最多显示条数，超出丢最旧，保证始终能看到最新
+        self.chat_list = ft.ListView(auto_scroll=True, spacing=2, expand=True)
+        self.gift_list = ft.ListView(auto_scroll=True, spacing=2, expand=True)
+        self.log_list = ft.ListView(auto_scroll=True, spacing=1, expand=True)
         self.gift_sum = ft.Text("礼物 0 条", size=13, color=ft.Colors.PURPLE_200)
         self.chat_sum = ft.Text("弹幕 0 条", size=13, color=ft.Colors.PURPLE_200)
 
@@ -380,8 +402,15 @@ class Studio:
                 padding=10,
                 expand=True,
                 content=ft.Column(
-                    [ft.Row([ft.Text(title, weight=ft.FontWeight.BOLD), extra]), lst],
+                    [
+                        ft.Row(
+                            [ft.Text(title, weight=ft.FontWeight.BOLD), extra],
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        ),
+                        ft.Container(lst, expand=True),
+                    ],
                     spacing=6,
+                    expand=True,
                 ),
             )
 
@@ -393,6 +422,7 @@ class Studio:
             ],
             spacing=10,
             expand=True,
+            vertical_alignment=ft.CrossAxisAlignment.STRETCH,
         )
 
     def _open(self, path: Path) -> None:
@@ -735,41 +765,45 @@ api:
         chat_n = 0
         gift_n = 0
         last_render = 0.0
+        MAX_CHAT, MAX_GIFT, MAX_LOG = 80, 60, 100
         while True:
             try:
-                kind, payload = self.events.get(timeout=0.25)
+                kind, payload = self.events.get(timeout=0.2)
             except queue.Empty:
                 kind = None
                 payload = None
+            dirty = False
             if kind == "chat":
                 chat_n += 1
                 self.chat_list.controls.append(ft.Text(payload, size=12))
-                if len(self.chat_list.controls) > 400:
-                    self.chat_list.controls = self.chat_list.controls[-400:]
-                self.chat_sum.value = f"弹幕 {chat_n} 条"
+                if len(self.chat_list.controls) > MAX_CHAT:
+                    self.chat_list.controls = self.chat_list.controls[-MAX_CHAT:]
+                self.chat_sum.value = f"弹幕 {chat_n} 条（显示最近 {MAX_CHAT}）"
+                dirty = True
             elif kind == "gift":
                 gift_n += 1
                 self.gift_list.controls.append(
                     ft.Text(payload, size=12, color=ft.Colors.PURPLE_200)
                 )
-                if len(self.gift_list.controls) > 300:
-                    self.gift_list.controls = self.gift_list.controls[-300:]
-                self.gift_sum.value = f"礼物 {gift_n} 条"
+                if len(self.gift_list.controls) > MAX_GIFT:
+                    self.gift_list.controls = self.gift_list.controls[-MAX_GIFT:]
+                self.gift_sum.value = f"礼物 {gift_n} 条（显示最近 {MAX_GIFT}）"
+                dirty = True
             elif kind == "log":
                 self.log_list.controls.append(ft.Text(payload, size=12, color=ft.Colors.WHITE70))
-                if len(self.log_list.controls) > 400:
-                    self.log_list.controls = self.log_list.controls[-400:]
+                if len(self.log_list.controls) > MAX_LOG:
+                    self.log_list.controls = self.log_list.controls[-MAX_LOG:]
+                dirty = True
             elif kind == "room":
                 now = time.time()
                 if now - last_render > 0.3:
                     self._render_rooms()
                     last_render = now
                 else:
-                    # 合并 room 重绘
-                    time.sleep(0.3)
+                    time.sleep(0.25)
                     self._render_rooms()
                     last_render = time.time()
-            if kind:
+            if kind or dirty:
                 self._push()
 
 
