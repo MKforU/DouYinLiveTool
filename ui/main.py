@@ -103,6 +103,40 @@ class RoomRuntime:
         self.anchor = ""
         self.log_lines: list[str] = []
 
+    def apply_runtime_flags(self) -> None:
+        """把录制/礼物/弹幕开关同步到运行中的 Barrage 实例。"""
+        inst = self.inst
+        if not inst:
+            return
+        try:
+            eo = getattr(inst, "_enable_outputs", None)
+            if isinstance(eo, dict):
+                eo["gift"] = self.gift
+                eo["chat"] = self.chat
+            cfg = getattr(inst, "config", None)
+            if isinstance(cfg, dict) and isinstance(cfg.get("output"), dict):
+                cfg["output"]["gift"] = self.gift
+                cfg["output"]["chat"] = self.chat
+            rec = getattr(inst, "_record_cfg", None)
+            if isinstance(rec, dict):
+                rec["enabled"] = self.record
+            if not self.record and hasattr(inst, "_stop_recording"):
+                try:
+                    inst._stop_recording()
+                except Exception:
+                    pass
+            if self.record and hasattr(inst, "_start_recording"):
+                try:
+                    # 仅在已开播且当前未在录时尝试开录
+                    if getattr(inst, "anchor_name", None) and not getattr(
+                        getattr(inst, "video_recorder", None), "is_recording", False
+                    ):
+                        inst._start_recording()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     def log(self, msg: str) -> None:
         line = f"{time.strftime('%H:%M:%S')} {msg}"
         self.log_lines.append(line)
@@ -604,8 +638,41 @@ api:
                 rt.status = "停止中…"
                 self.events.put(("room", rt.live_id))
 
+        def on_record(e, r=rt) -> None:
+            r.record = bool(e.control.value)
+            r.apply_runtime_flags()
+            self.events.put(
+                (
+                    "log",
+                    f"{time.strftime('%H:%M:%S')} [{r.name}] 录制 {'开' if r.record else '关'}",
+                )
+            )
+            self._render_rooms()
+
+        def on_gift(e, r=rt) -> None:
+            r.gift = bool(e.control.value)
+            r.apply_runtime_flags()
+            self.events.put(
+                (
+                    "log",
+                    f"{time.strftime('%H:%M:%S')} [{r.name}] 礼物 {'开' if r.gift else '关'}",
+                )
+            )
+            self._render_rooms()
+
+        def on_chat(e, r=rt) -> None:
+            r.chat = bool(e.control.value)
+            r.apply_runtime_flags()
+            self.events.put(
+                (
+                    "log",
+                    f"{time.strftime('%H:%M:%S')} [{r.name}] 弹幕 {'开' if r.chat else '关'}",
+                )
+            )
+            self._render_rooms()
+
         return ft.Container(
-            width=300,
+            width=320,
             bgcolor=ft.Colors.BLUE_GREY_900,
             border_radius=12,
             padding=12,
@@ -613,11 +680,29 @@ api:
                 [
                     ft.Row([ft.Text(rt.name or rt.live_id, weight=ft.FontWeight.BOLD, expand=True), chip]),
                     ft.Text(f"ID: {rt.live_id}", size=11, color=ft.Colors.BLUE_GREY_400),
-                    ft.Text(
-                        f"录制: {'开' if rt.record else '关'}  礼物: {'开' if rt.gift else '关'}  "
-                        f"弹幕: {'开' if rt.chat else '关'}  画质: {rt.quality}",
-                        size=12,
-                        color=ft.Colors.BLUE_GREY_200,
+                    ft.Text(f"画质: {rt.quality}", size=12, color=ft.Colors.BLUE_GREY_200),
+                    ft.Row(
+                        [
+                            ft.Switch(
+                                label="录制",
+                                value=rt.record,
+                                active_color=ft.Colors.PURPLE_300,
+                                on_change=on_record,
+                            ),
+                            ft.Switch(
+                                label="礼物",
+                                value=rt.gift,
+                                active_color=ft.Colors.PURPLE_300,
+                                on_change=on_gift,
+                            ),
+                            ft.Switch(
+                                label="弹幕",
+                                value=rt.chat,
+                                active_color=ft.Colors.PURPLE_300,
+                                on_change=on_chat,
+                            ),
+                        ],
+                        wrap=True,
                     ),
                     ft.Row(
                         [
@@ -634,7 +719,7 @@ api:
                         ]
                     ),
                 ],
-                spacing=6,
+                spacing=8,
             ),
         )
 
