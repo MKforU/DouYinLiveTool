@@ -1,110 +1,75 @@
-# DouyinBarrage
+# DouYinLiveTool
 
-> 抖音直播间弹幕实时采集器 — WebSocket 长连接，13 种消息类型，CSV / SQLite 双格式，集成直播录制。
+抖音直播 **弹幕 / 礼物 / 录制** 一体工具。
 
-![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
-![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)
-![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)
+- 采集核心：[DouyinBarrage](https://github.com/xhynice/DouyinBarrage)（WebSocket + 本地 sign.js）
+- 桌面界面：Flet（填房间、开关、实时弹幕/礼物、日志）
 
-## 快速开始
+## 功能
 
-```bash
-# 安装
+- 粘贴直播间链接或 ID
+- 房间卡片独立开关：**录制** / **礼物** / **弹幕**（运行中可改）
+- 全局默认：画质、分段时长（默认 **15 分钟**）、是否自动转 MP4
+- 实时查看弹幕、礼物；日志面板
+- 数据：CSV + SQLite；视频在会话目录下的 `videos\`
+- 自动识别登录 Cookie（含 `sessionid` 时礼物更完整）
+
+## 目录结构
+
+```
+data/{主播}/{会话}/
+├── chat.csv / gift.csv / …
+├── *.db
+└── videos/          # 录像（分段 TS，结束后可转 MP4）
+```
+
+## 快速开始（源码）
+
+```powershell
 pip install -r requirements.txt
 
-# 配置 Cookie（可选，获取完整礼物等数据）
-cp cookie.example.txt cookie.txt
-# 浏览器登录 douyin.com → F12 → Cookies → 复制到 cookie.txt
+# Cookie（必填，否则礼物可能受限）
+copy cookie.example.txt cookie.txt
+# 浏览器登录 douyin.com → F12 复制 Cookie → 覆盖 cookie.txt
 
-# 编辑 rooms.txt（每行: id,name，#开头不启用）
-echo "126833924894,张君雅" >> rooms.txt
-
-# 运行
-python main.py --all          # 采集全部房间
-python main.py 536863152858   # 指定房间
-python main.py --all --record # 采集 + 录制
+# 需要系统或 tools 下有 Node.js（签名）与 FFmpeg（录制）
+python run_ui.py
+# 或
+启动UI.bat
 ```
 
-## 命令行参数
+也可用 AI 助手在本机把浏览器导出的 Netscape cookies 转成 `cookie.txt`，Cookie 只留本地、勿提交 Git。
 
-| 参数 | 说明 |
-|------|------|
-| `live_id` | 直播间 ID（不提供则交互式选择） |
-| `--log-level {DEBUG,INFO,WARNING,ERROR,NONE}` | 覆盖日志级别 |
-| `--live-stop` | 直播结束后停止退出 |
-| `--live-wait` | 直播结束后等待重开播 |
-| `--record` | 启用直播录制 |
-| `--all` | 采集 rooms.txt 全部房间 |
+## CLI
 
-## 配置文件
-
-编辑 `config.yaml`：
-
-```yaml
-output_dir: data              # 输出目录
-live_stop: true               # 下播后退出（false=等待重开）
-live_check_interval: 160      # 未开播轮询间隔（秒）
-
-output:                       # 消息类型开关
-  chat: true                  # 弹幕
-  gift: true                  # 礼物
-  like: true                  # 点赞
-  social: true                # 关注/分享
-  stats: true                 # 统计
-  lucky_bag: true             # 福袋口令
-  control: true               # 直播状态
-  # member / rank / fansclub / emoji / room / roomstats: false
-
-barrage:
-  csv: true                   # CSV 输出
-  sqlite: false               # SQLite 输出
-
-record:
-  enabled: false              # 录制开关
-  format: ts                  # 封装: ts / flv / mp4
-  quality: 原画               # 画质: 原画/蓝光/超清/高清/标清（与抖音官方名一致）
-  segment_time: 0             # 分段时长（秒），0=不分段
-  segment_size: 0             # 分段大小（MB），0=不限制
-  auto_convert: true          # 结束后自动 ts→mp4
-
-api:
-  enabled: false              # HTTP API 开关
-  port: 8088                  # 监听端口
+```bash
+python main.py <直播间ID> --record
+python main.py --all --record
 ```
 
-## 数据输出
+## Windows 便携版
 
-```
-data/{主播名}/
-├── data.db                   # SQLite 数据库（跨会话追加）
-├── meta.json                 # 主播信息
-└── YYYYMMDD_HHMM/           # 会话目录
-    ├── chat.csv / gift.csv / ...
-    └── {主播名}_*.ts        # 录制文件（同目录）
-```
+见 [Releases](../../releases)：下载 zip 解压后运行 `抖音直播助手\抖音直播助手.exe`。  
+包内已含 Node / FFmpeg；**不包含** Cookie，请自行放置 `cookie.txt`。
 
-- 日志按天：`YYYY-MM-DD.log`，启动时自动清理 7 天前
-- 无效房间自动注释到 `rooms.txt`，不再重试
+## 配置要点（config.yaml）
 
-## 常见问题
+| 项 | 说明 |
+|----|------|
+| `output_dir` | 数据根目录（默认 `data`） |
+| `record.segment_time` | 分段秒数（900=15 分钟） |
+| `record.quality` | 原画 / 蓝光 / 超清… |
+| `output.gift` / `chat` | 消息类型开关 |
 
-| 现象 | 解决 |
-|------|------|
-| DEVICE_BLOCKED | X-Bogus 签名问题，检查 Node.js ≥ 16，`--log-level DEBUG` |
-| 有连接无弹幕 | 业务看门狗 60s 后自动重连，无需手动干预 |
-| 完全无数据 | TCP 静默断开，ping_timeout + 看门狗自动处理 |
-| 无效房间卡住 | 自动检测并注释，不重试 |
+## 隐私
 
-## 更新记录
-
-详见 [CHANGELOG.md](CHANGELOG.md)
+- **不要**提交 `cookie.txt`、`data/`、录制文件
+- 本仓库不含真实 Cookie / 用户数据
 
 ## 免责声明
 
-本项目仅供学习研究，请勿用于商业用途或违反平台规则。
+仅供学习研究，请遵守平台规则与当地法律，勿用于商业滥用。
 
-## 致谢
+## License
 
-- [DouYin_Spider](https://github.com/cv-cat/DouYin_Spider) — 签名脚本
-- [DouyinLiveWebFetcher](https://github.com/saermart/DouyinLiveWebFetcher) — 弹幕爬取
-- [DouyinLiveRecorder](https://github.com/ihmily/DouyinLiveRecorder) — 录制架构
+基于上游 [DouyinBarrage](https://github.com/xhynice/DouyinBarrage)（MIT）扩展。
