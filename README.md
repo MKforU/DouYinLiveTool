@@ -20,6 +20,10 @@ pip install -r requirements.txt
 copy cookie.example.txt cookie.txt
 # 浏览器登录 douyin.com → F12 → 复制 Cookie → 粘贴覆盖 cookie.txt
 # 需包含 sessionid
+#
+# 技巧：也可以用 AI 助手（如 MiMo）帮你把浏览器导出的
+# Netscape cookies.txt 转成本工具用的 cookie.txt 字符串格式，
+# 并自动写入本机配置——把导出文件路径给 AI 即可，无需手抄几十行。
 
 # 3. 需要 Node.js ≥ 16（WSS 签名）与 FFmpeg（录制）
 
@@ -49,6 +53,7 @@ data/{主播名}/
 ## 隐私
 
 - **不要**把 `cookie.txt` 提交到 Git（已在 `.gitignore`）
+- 可让 AI 助手在**本机**读取浏览器导出的 cookie 文件并转成 `cookie.txt`，避免手抄；Cookie 只留在本地，不会随仓库上传
 - 本仓库不含任何真实 Cookie / 录制数据
 
 ## 免责声明
