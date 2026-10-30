@@ -1,0 +1,20 @@
+﻿# secrets
+cookie.txt
+ui_runtime.yaml
+*.log
+
+# runtime data
+data/
+logs/
+dist/
+build/
+.venv/
+venv/
+tools/
+__pycache__/
+*.pyc
+*.spec.bak
+
+# local
+.DS_Store
+Thumbs.db
