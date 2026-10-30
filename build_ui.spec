@@ -82,7 +82,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="抖音直播助手",
+    name="DouYinLiveTool",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -104,5 +104,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="抖音直播助手",
+    name="DouYinLiveTool",
 )

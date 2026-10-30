@@ -10,10 +10,8 @@ ROOT = Path(__file__).resolve().parent
 
 
 def _add_tools_path() -> None:
-    # 若本地放了 tools/node 或 tools/ffmpeg 则优先使用
     for rel in (
         "tools/node/node-v20.18.0-win-x64",
-        "tools/node",
         "tools/ffmpeg/bin",
     ):
         d = ROOT / rel
