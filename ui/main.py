@@ -388,10 +388,10 @@ class Studio:
         )
 
     def _build_panels(self) -> None:
-        # 固定最多显示条数，超出丢最旧，保证始终能看到最新
-        self.chat_list = ft.ListView(auto_scroll=True, spacing=2, expand=True)
-        self.gift_list = ft.ListView(auto_scroll=True, spacing=2, expand=True)
-        self.log_list = ft.ListView(auto_scroll=True, spacing=1, expand=True)
+        # 必须给固定高度：expand 在无约束父级里会塌成 0，看起来就是空的
+        self.chat_list = ft.ListView(auto_scroll=True, height=280, spacing=2)
+        self.gift_list = ft.ListView(auto_scroll=True, height=280, spacing=2)
+        self.log_list = ft.ListView(auto_scroll=True, height=200, spacing=1)
         self.gift_sum = ft.Text("礼物 0 条", size=13, color=ft.Colors.PURPLE_200)
         self.chat_sum = ft.Text("弹幕 0 条", size=13, color=ft.Colors.PURPLE_200)
 
@@ -407,10 +407,10 @@ class Studio:
                             [ft.Text(title, weight=ft.FontWeight.BOLD), extra],
                             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         ),
-                        ft.Container(lst, expand=True),
+                        lst,
                     ],
                     spacing=6,
-                    expand=True,
+                    tight=True,
                 ),
             )
 
@@ -422,7 +422,6 @@ class Studio:
             ],
             spacing=10,
             expand=True,
-            vertical_alignment=ft.CrossAxisAlignment.STRETCH,
         )
 
     def _open(self, path: Path) -> None:
