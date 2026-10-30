@@ -147,8 +147,64 @@ class Studio:
         global _STUDIO
         _STUDIO = self
         threading.Thread(target=self._ui_loop, daemon=True).start()
+        threading.Thread(target=self._csv_poll_loop, daemon=True).start()
         self._install_recorder_hook()
         self._install_log_handler()
+
+    def _csv_poll_loop(self) -> None:
+        """定期从 data/*/session/*.csv 尾部读入 UI，弥补钩子/缓冲延迟。"""
+        seen_chat: set[str] = set()
+        seen_gift: set[str] = set()
+        while True:
+            time.sleep(2.0)
+            try:
+                base = _writable_root() / "data"
+                if not base.is_dir():
+                    continue
+                for gift_f in base.rglob("gift.csv"):
+                    self._tail_csv(gift_f, seen_gift, "gift")
+                for chat_f in base.rglob("chat.csv"):
+                    self._tail_csv(chat_f, seen_chat, "chat")
+            except Exception:
+                pass
+
+    def _tail_csv(self, path: Path, seen: set, kind: str) -> None:
+        try:
+            # 只读最后 64KB
+            data = path.read_bytes()[-65536:]
+            text = data.decode("utf-8", errors="replace")
+            lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+            if not lines or lines[0].startswith("time,"):
+                lines = lines[1:]
+            for ln in lines[-80:]:
+                if ln in seen:
+                    continue
+                seen.add(ln)
+                if len(seen) > 2000:
+                    seen.clear()
+                if kind == "gift":
+                    # time,user_id,user_name,to_user_id,to_user_name,gift_name,...
+                    parts = ln.split(",")
+                    if len(parts) >= 6:
+                        name, gname = parts[2], parts[5]
+                        cnt = parts[6] if len(parts) > 6 else "1"
+                        dia = parts[7] if len(parts) > 7 else ""
+                        to = parts[4] if len(parts) > 4 else ""
+                        extra = f" → {to}" if to and to not in ("", '""') else ""
+                        dia_s = f" ({dia}抖币)" if dia and dia not in ("", '""') else ""
+                        self.events.put(("gift", f"{name} 送出 {gname}×{cnt}{extra}{dia_s}"))
+                    else:
+                        self.events.put(("gift", ln))
+                else:
+                    # time,user_id,user_name,content,...
+                    parts = ln.split(",", 3)
+                    if len(parts) >= 4:
+                        name, content = parts[2], parts[3].rstrip(",")
+                        self.events.put(("chat", f"{name}: {content}"))
+                    else:
+                        self.events.put(("chat", ln))
+        except Exception:
+            pass
 
     def _install_log_handler(self) -> None:
         """把 Barrage 的 logging 接到界面日志。"""
@@ -195,6 +251,10 @@ class Studio:
             "打开数据目录",
             on_click=lambda _e: self._open(_writable_root() / "data"),
         )
+        self.open_videos = ft.OutlinedButton(
+            "打开视频目录",
+            on_click=lambda _e: self._open_videos_root(),
+        )
         self.top = ft.Row(
             [
                 ft.Container(
@@ -209,6 +269,7 @@ class Studio:
                 self.link,
                 self.add_btn,
                 self.open_data,
+                self.open_videos,
             ],
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
@@ -308,6 +369,19 @@ class Studio:
         except Exception:
             pass
 
+    def _open_videos_root(self) -> None:
+        """打开 data 下最新的 videos 目录，没有则打开 data。"""
+        data = _writable_root() / "data"
+        try:
+            vids = list(data.rglob("videos"))
+            if vids:
+                vids.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+                self._open(vids[0])
+            else:
+                self._open(data)
+        except Exception:
+            self._open(data)
+
     def _refresh_env(self) -> None:
         import shutil
 
@@ -330,19 +404,36 @@ class Studio:
         self._toast("已检查 Cookie / Node / FFmpeg")
 
     def _push(self) -> None:
+        """后台线程刷新界面：Flet 在 Windows 上仅 page.update() 常不生效，需 schedule_update + 主线程 task。"""
         try:
-            self.page.update()
+            self.page.schedule_update()
         except Exception:
             pass
+        try:
+            async def _do():
+                try:
+                    self.page.update()
+                except Exception:
+                    pass
+
+            self.page.run_task(_do)
+        except Exception:
+            try:
+                self.page.update()
+            except Exception:
+                pass
 
     def _toast(self, msg: str) -> None:
         s = ft.SnackBar(ft.Text(msg))
         try:
             self.page.overlay.append(s)
             s.open = True
-            self.page.update()
+            self.page.schedule_update()
         except Exception:
-            pass
+            try:
+                self.page.update()
+            except Exception:
+                pass
 
     def _log(self, msg: str) -> None:
         self.events.put(("log", f"{time.strftime('%H:%M:%S')} {msg}"))
@@ -480,7 +571,7 @@ record:
   enabled: {rec}
   format: ts
   quality: {rt.quality}
-  segment_time: 3600
+  segment_time: 900
   segment_size: 0
   auto_convert: true
 api:

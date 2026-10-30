@@ -117,7 +117,11 @@ class DouyinRecorder:
             self._recording_active = True
 
     def _build_save_path(self):
-        """构建保存路径（基础路径，不含分段序号）。"""
+        """构建保存路径（基础路径，不含分段序号）。
+
+        视频放在会话目录下的 videos/：
+          {output_dir}/{主播}/{会话}/videos/{文件}.ts
+        """
         fmt = self._record_cfg.get('format', 'ts')
         now = datetime.now()
         ms = now.microsecond // 1000
@@ -126,11 +130,15 @@ class DouyinRecorder:
             self._session_dir = os.path.join(
                 resolve_anchor_dir(self._output_dir, self.anchor_name, self.live_id), ts)
             os.makedirs(self._session_dir, exist_ok=True)
+            self._video_dir = os.path.join(self._session_dir, 'videos')
+            os.makedirs(self._video_dir, exist_ok=True)
 
         dir_name = sanitize_dir_name(self.anchor_name) or self.live_id
         ts_ms = now.strftime('%Y%m%d_%H%M') + f'_{ms:03d}'
         filename = f"{dir_name}_{ts_ms}.{fmt}"
-        return os.path.join(self._session_dir, filename)
+        video_dir = getattr(self, '_video_dir', None) or os.path.join(self._session_dir, 'videos')
+        os.makedirs(video_dir, exist_ok=True)
+        return os.path.join(video_dir, filename)
 
     def _start_ffmpeg(self):
         """启动 ffmpeg 进程（支持分段录制）。
@@ -360,12 +368,19 @@ class DouyinRecorder:
             3. sleep(3) 确保文件句柄释放后再删除 ts
             4. 删除后 sleep(2) 验证 ts 是否真正消失
         """
-        if not self._session_dir or not os.path.isdir(self._session_dir):
-            return
+        search_dirs = []
+        vd = getattr(self, '_video_dir', '') or ''
+        if vd and os.path.isdir(vd):
+            search_dirs.append(vd)
+        if self._session_dir and os.path.isdir(self._session_dir):
+            search_dirs.append(self._session_dir)
 
-        ts_files = sorted(glob.glob(os.path.join(self._session_dir, '*.ts')))
+        ts_files = []
+        for d in search_dirs:
+            ts_files.extend(glob.glob(os.path.join(d, '*.ts')))
+        ts_files = sorted(set(ts_files))
         if not ts_files:
-            logger.debug(f"[转码] 无 ts 文件需要转换")
+            logger.debug(f"[转码] 无 ts 文件需要转换 (dirs={search_dirs})")
             return
 
         try:
@@ -450,4 +465,4 @@ class DouyinRecorder:
             except Exception as e:
                 logger.warning(f"[转码] 异常: {e}")
 
-        logger.info(f"[转码] 完成: 转换 {converted} 个, 删除 {deleted} 个 ts 文件, 目录: {self._session_dir}")
+        logger.info(f"[转码] 完成: 转换 {converted} 个, 删除 {deleted} 个 ts 文件")
