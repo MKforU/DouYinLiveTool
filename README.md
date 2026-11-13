@@ -3,14 +3,14 @@
 抖音直播 **弹幕 / 礼物 / 录制** 一体工具。
 
 - 采集核心：[DouyinBarrage](https://github.com/xhynice/DouyinBarrage)（WebSocket + 本地 sign.js）
-- 桌面界面：Flet（填房间、开关、实时弹幕/礼物、日志）
+- 桌面界面：Flet（左侧工作台、直播间卡片、弹幕/礼物/日志标签控制台）
 
 ## 功能
 
 - 粘贴直播间链接或 ID
 - 房间卡片独立开关：**录制** / **礼物** / **弹幕**（运行中可改）
 - 全局默认：画质、分段时长（默认 **15 分钟**）、是否自动转 MP4
-- 实时查看弹幕、礼物；日志面板
+- 实时查看弹幕、礼物；日志按实际运行事件显示，不预填启动数据
 - 数据：CSV + SQLite；视频在会话目录下的 `videos\`
 - 自动识别登录 Cookie（含 `sessionid` 时礼物更完整）
 
@@ -73,3 +73,4 @@ python main.py --all --record
 ## License
 
 基于上游 [DouyinBarrage](https://github.com/xhynice/DouyinBarrage)（MIT）扩展。
+
