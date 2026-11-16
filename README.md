@@ -3,7 +3,7 @@
 抖音直播 **弹幕 / 礼物 / 录制** 一体工具。
 
 - 采集核心：[DouyinBarrage](https://github.com/xhynice/DouyinBarrage)（WebSocket + 本地 sign.js）
-- 桌面界面：Flet（左侧工作台、直播间卡片、弹幕/礼物/日志标签控制台）
+- 桌面界面：Flet（顶部命令栏 + 双栏直播导播台 + 弹幕/礼物/日志实时控制台）
 
 ## 功能
 
@@ -73,4 +73,5 @@ python main.py --all --record
 ## License
 
 基于上游 [DouyinBarrage](https://github.com/xhynice/DouyinBarrage)（MIT）扩展。
+
 

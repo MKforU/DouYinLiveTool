@@ -46,25 +46,25 @@ for rel in (
 
 
 
-# ---------- UI 视觉规范（Apple 风格） ----------
+# ---------- UI 视觉规范（Minimalism / Swiss / Bento） ----------
 C = {
-    "bg": "#F5F5F7",
-    "surface": "#FFFFFF",
-    "surface_alt": "#F7F7F9",
-    "soft": "#F2F2F7",
-    "border": "#E5E5EA",
-    "text": "#1D1D1F",
-    "muted": "#6E6E73",
-    "blue": "#007AFF",
-    "blue_soft": "#EAF3FF",
-    "green": "#34C759",
-    "green_soft": "#EAF9EE",
-    "orange": "#FF9F0A",
-    "orange_soft": "#FFF4E5",
-    "red": "#FF3B30",
-    "red_soft": "#FFECEB",
-    "purple": "#AF52DE",
-    "purple_soft": "#F7EDFC",
+    "bg": "#0F0F23",
+    "surface": "#1B1B30",
+    "surface_alt": "#22223A",
+    "soft": "#27273B",
+    "border": "#312E81",
+    "text": "#F8FAFC",
+    "muted": "#94A3B8",
+    "blue": "#6366F1",
+    "blue_soft": "#292752",
+    "green": "#22C55E",
+    "green_soft": "#123526",
+    "orange": "#F59E0B",
+    "orange_soft": "#3A2A10",
+    "red": "#EF4444",
+    "red_soft": "#3B1717",
+    "purple": "#A78BFA",
+    "purple_soft": "#2D2450",
 }
 
 
@@ -94,6 +94,7 @@ def _card(
     expand: bool = False,
     width: int | None = None,
     height: int | None = None,
+    gradient: ft.Gradient | None = None,
 ) -> ft.Container:
     return ft.Container(
         content=content,
@@ -102,14 +103,20 @@ def _card(
         height=height,
         padding=padding,
         border_radius=radius,
-        bgcolor=bgcolor or C["surface"],
+        bgcolor=None if gradient else (bgcolor or C["surface"]),
+        gradient=gradient,
         border=ft.Border.all(1, C["border"]) if border else None,
+        shadow=ft.BoxShadow(
+            color="#050514",
+            blur_radius=24,
+            offset=ft.Offset(0, 8),
+        ),
     )
 
 
 def _pill(value: str, *, fg: str, bg: str) -> ft.Container:
     return ft.Container(
-        _txt(value, size=11, color=fg, weight=ft.FontWeight.W_600),
+        _txt(value, size=12, color=fg, weight=ft.FontWeight.W_600),
         bgcolor=bg,
         padding=ft.Padding.symmetric(vertical=4, horizontal=9),
         border_radius=999,
@@ -154,6 +161,8 @@ def _button(
         style=ft.ButtonStyle(
             shape=ft.RoundedRectangleBorder(radius=10),
             padding=ft.Padding.symmetric(horizontal=14, vertical=10),
+            overlay_color="#4C4C66",
+            animation_duration=ft.Animation(160, ft.AnimationCurve.EASE_OUT),
         ),
     )
 
@@ -272,9 +281,9 @@ class Studio:
             page.window.title = "抖音直播助手"
         except Exception:
             pass
-        page.theme_mode = ft.ThemeMode.LIGHT
+        page.theme_mode = ft.ThemeMode.DARK
         try:
-            page.theme = ft.Theme(color_scheme_seed=ft.Colors.BLUE)
+            page.theme = ft.Theme(color_scheme_seed=ft.Colors.INDIGO)
         except Exception:
             pass
         page.bgcolor = C["bg"]
@@ -293,18 +302,81 @@ class Studio:
 
         self._build_top()
         self._build_settings()
-        self._build_sidebar()
         self._build_panels()
+
+        self.env_card = _card(
+            ft.Column(
+                [
+                    ft.Row(
+                        [
+                            _icon_badge(
+                                ft.Icons.VERIFIED_USER_ROUNDED,
+                                fg=C["green"],
+                                bg=C["green_soft"],
+                                size=32,
+                            ),
+                            _txt("运行环境", size=15, weight=ft.FontWeight.W_600),
+                        ],
+                        spacing=9,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    self.cookie_st,
+                    self.env,
+                ],
+                spacing=8,
+            ),
+            padding=16,
+            radius=20,
+            height=142,
+        )
+
+        self.guide = _card(
+            ft.Column(
+                [
+                    ft.Row(
+                        [
+                            _icon_badge(
+                                ft.Icons.MENU_BOOK_ROUNDED,
+                                fg=C["purple"],
+                                bg=C["purple_soft"],
+                                size=32,
+                            ),
+                            _txt("三步开始采集", size=15, weight=ft.FontWeight.W_600),
+                        ],
+                        spacing=9,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    ft.Row(
+                        [
+                            _pill("1  添加直播间", fg=C["blue"], bg=C["blue_soft"]),
+                            _pill("2  调整开关", fg=C["purple"], bg=C["purple_soft"]),
+                            _pill("3  查看实时动态", fg=C["green"], bg=C["green_soft"]),
+                        ],
+                        spacing=8,
+                        wrap=True,
+                    ),
+                    _txt(
+                        "所有数据仅保存在本机 data 目录，日志只在实际运行时产生。",
+                        size=12,
+                        color=C["muted"],
+                    ),
+                ],
+                spacing=10,
+            ),
+            padding=16,
+            radius=20,
+        )
+
         self.rooms_row = ft.Row(
             spacing=12,
             wrap=False,
-            height=84,
+            height=36,
             scroll=ft.ScrollMode.AUTO,
             vertical_alignment=ft.CrossAxisAlignment.START,
         )
         self.rooms_row_wrap = ft.Container(
             self.rooms_row,
-            height=84,
+            height=36,
             bgcolor=C["bg"],
             clip_behavior=ft.ClipBehavior.HARD_EDGE,
         )
@@ -312,9 +384,8 @@ class Studio:
         self._gift_n = 0
         self._csv_offsets: dict[str, int] = {}
 
-        self.main = ft.Column(
+        self.left_col = ft.Column(
             [
-                self.top,
                 self.settings,
                 ft.Row(
                     [
@@ -322,7 +393,7 @@ class Studio:
                         _pill("实时状态", fg=C["blue"], bg=C["blue_soft"]),
                         _txt(
                             "添加直播间后，卡片会显示在这里",
-                            size=11,
+                            size=12,
                             color=C["muted"],
                         ),
                     ],
@@ -330,24 +401,43 @@ class Studio:
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
                 self.rooms_row_wrap,
-                self.panels,
+                self.guide,
             ],
             expand=True,
             scroll=ft.ScrollMode.AUTO,
             spacing=14,
         )
-        self._root = ft.Container(
-            content=ft.Row(
-                [self.sidebar, self.main],
-                spacing=16,
-                expand=True,
-                vertical_alignment=ft.CrossAxisAlignment.START,
-            ),
+        self.right_col = ft.Column(
+            [
+                self.panels,
+                self.env_card,
+            ],
+            width=440,
             expand=True,
-            bgcolor=C["bg"],
+            spacing=14,
+        )
+        self.body = ft.Row(
+            [self.left_col, self.right_col],
+            spacing=16,
+            expand=True,
+            vertical_alignment=ft.CrossAxisAlignment.START,
+        )
+        self.main = ft.Column(
+            [self.top, self.body],
+            expand=True,
+            spacing=14,
+        )
+        self._root = ft.Container(
+            content=self.main,
+            expand=True,
+            gradient=ft.LinearGradient(
+                begin=ft.Alignment.TOP_LEFT,
+                end=ft.Alignment.BOTTOM_RIGHT,
+                colors=["#0F0F23", "#12122A", "#17132F"],
+            ),
             padding=ft.Padding.symmetric(horizontal=18, vertical=16),
         )
-        for ctl in (self.sidebar, self.top, self.settings, self.panels):
+        for ctl in (self.top, self.settings, self.panels, self.env_card):
             ctl.opacity = 0
             ctl.animate_opacity = True
         self.page.add(self._root)
@@ -355,7 +445,7 @@ class Studio:
         async def _intro() -> None:
             import asyncio
             await asyncio.sleep(0.18)
-            for ctl in (self.sidebar, self.top, self.settings, self.panels):
+            for ctl in (self.top, self.settings, self.panels, self.env_card):
                 ctl.opacity = 1
             try:
                 self.page.update()
@@ -471,72 +561,97 @@ class Studio:
         self.link = ft.TextField(
             hint_text="粘贴直播间链接，或输入房间号",
             prefix_icon=ft.Icons.LINK_ROUNDED,
-            width=520,
-            height=48,
-            bgcolor=C["surface"],
+            width=360,
+            height=44,
+            bgcolor="#25254A",
             color=C["text"],
             cursor_color=C["blue"],
             text_size=14,
             border_radius=12,
-            border_color=C["border"],
+            border_color="#6D6AA8",
             focused_border_color=C["blue"],
-            focused_bgcolor=C["surface"],
+            focused_bgcolor="#34345F",
             on_submit=lambda _e: self.add_room(),
         )
         self.add_btn = _button(
             "开始采集",
             icon=ft.Icons.PLAY_ARROW_ROUNDED,
-            fg=C["surface"],
-            bg=C["blue"],
+            fg="#0F172A",
+            bg=C["green"],
             on_click=lambda _e: self.add_room(),
+        )
+        self.open_data = _button(
+            "数据",
+            icon=ft.Icons.FOLDER_OPEN,
+            on_click=lambda _e: self._open(_writable_root() / "data"),
+        )
+        self.open_videos = _button(
+            "视频",
+            icon=ft.Icons.VIDEO_LIBRARY,
+            on_click=lambda _e: self._open_videos_root(),
+        )
+        self.check_btn = _button(
+            "环境",
+            icon=ft.Icons.REFRESH_ROUNDED,
+            on_click=lambda _e: self._check_cookie(),
         )
 
         brand = ft.Row(
             [
                 _icon_badge(
                     ft.Icons.VIDEOCAM_ROUNDED,
-                    fg=C["surface"],
+                    fg="#FFFFFF",
                     bg=C["blue"],
-                    size=42,
+                    size=36,
                     gradient=ft.LinearGradient(
                         begin=ft.Alignment.TOP_LEFT,
                         end=ft.Alignment.BOTTOM_RIGHT,
-                        colors=[C["blue"], "#5AC8FA"],
+                        colors=[C["blue"], "#A78BFA"],
                     ),
                 ),
                 ft.Column(
                     [
-                        _txt("直播采集工作台", size=24, weight=ft.FontWeight.W_700),
-                        _txt("把直播间的弹幕、礼物与录制集中到一个控制台", size=12, color=C["muted"]),
+                        _txt("直播采集工作台", size=17, weight=ft.FontWeight.W_700),
+                        _txt("弹幕 · 礼物 · 录制", size=12, color="#CBD5E1"),
                     ],
-                    spacing=3,
+                    spacing=1,
                 ),
             ],
-            spacing=12,
+            spacing=10,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
+        quick = ft.Row(
+            [self.open_data, self.open_videos, self.check_btn],
+            spacing=6,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        self.top_status = _pill("等待接入", fg="#FFFFFF", bg="#4C4A7A")
 
         self.top = _card(
             ft.Column(
                 [
                     ft.Row(
-                        [
-                            brand,
-                            _pill("等待接入", fg=C["blue"], bg=C["blue_soft"]),
-                        ],
+                        [brand, self.top_status],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ft.Row(
-                        [self.link, self.add_btn],
+                        [self.link, self.add_btn, quick],
                         spacing=10,
+                        wrap=True,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                 ],
-                spacing=16,
+                spacing=10,
             ),
-            padding=18,
-            radius=22,
+            padding=12,
+            radius=20,
+            border=False,
+            gradient=ft.LinearGradient(
+                begin=ft.Alignment.CENTER_LEFT,
+                end=ft.Alignment.CENTER_RIGHT,
+                colors=["#1E1B4B", "#4338CA", "#6366F1"],
+            ),
         )
 
     def _build_sidebar(self) -> None:
@@ -573,12 +688,12 @@ class Studio:
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ft.Container(height=1, bgcolor=C["border"]),
-                    _txt("快捷操作", size=11, color=C["muted"], weight=ft.FontWeight.W_600),
+                    _txt("快捷操作", size=12, color=C["muted"], weight=ft.FontWeight.W_600),
                     data_btn,
                     video_btn,
                     check_btn,
                     ft.Container(height=1, bgcolor=C["border"]),
-                    _txt("运行环境", size=11, color=C["muted"], weight=ft.FontWeight.W_600),
+                    _txt("运行环境", size=12, color=C["muted"], weight=ft.FontWeight.W_600),
                     self.cookie_st,
                     self.env,
                 ],
@@ -597,21 +712,21 @@ class Studio:
             value=True,
             active_color=C["blue"],
             inactive_thumb_color=C["surface"],
-            inactive_track_color="#D1D1D6",
+            inactive_track_color="#3A3A55",
         )
         self.gift_sw = ft.Switch(
             label="记录礼物",
             value=True,
             active_color=C["blue"],
             inactive_thumb_color=C["surface"],
-            inactive_track_color="#D1D1D6",
+            inactive_track_color="#3A3A55",
         )
         self.chat_sw = ft.Switch(
             label="弹幕",
             value=True,
             active_color=C["blue"],
             inactive_thumb_color=C["surface"],
-            inactive_track_color="#D1D1D6",
+            inactive_track_color="#3A3A55",
         )
         self.quality_dd = ft.Dropdown(
             label="画质",
@@ -624,7 +739,7 @@ class Studio:
             bgcolor=C["surface"],
             color=C["text"],
             text_size=13,
-            border_color=C["border"],
+            border_color="#6D6AA8",
             focused_border_color=C["blue"],
             border_radius=10,
             height=44,
@@ -635,7 +750,7 @@ class Studio:
             on_click=lambda _e: self._check_cookie(),
         )
         self.cookie_st = _txt("", size=12, color=C["muted"])
-        self.env = _txt("", size=11, color=C["muted"])
+        self.env = _txt("", size=12, color=C["muted"])
 
         controls = ft.Row(
             [
@@ -644,7 +759,6 @@ class Studio:
                 self.chat_sw,
                 self.quality_dd,
                 self.cookie_btn,
-                self.cookie_st,
             ],
             spacing=16,
             wrap=True,
@@ -669,10 +783,9 @@ class Studio:
                     controls,
                     _txt(
                         "开关对之后添加的房间生效；已添加的房间可在卡片上单独调整",
-                        size=11,
+                        size=12,
                         color=C["muted"],
                     ),
-                    self.env,
                 ],
                 spacing=10,
             ),
@@ -682,28 +795,53 @@ class Studio:
 
     def _build_panels(self) -> None:
         # 实时数据默认不预填，只有真正收到事件后才展示列表。
-        self.chat_list = ft.ListView(auto_scroll=True, height=248, spacing=5, visible=False)
-        self.gift_list = ft.ListView(auto_scroll=True, height=248, spacing=5, visible=False)
-        self.log_list = ft.ListView(auto_scroll=True, height=248, spacing=3, visible=False)
+        self.chat_list = ft.ListView(auto_scroll=True, height=392, spacing=5, visible=False)
+        self.gift_list = ft.ListView(auto_scroll=True, height=392, spacing=5, visible=False)
+        self.log_list = ft.ListView(auto_scroll=True, height=392, spacing=3, visible=False)
         self.gift_sum = _pill("礼物", fg=C["purple"], bg=C["purple_soft"])
         self.chat_sum = _pill("弹幕", fg=C["blue"], bg=C["blue_soft"])
         log_sum = _pill("日志", fg=C["muted"], bg=C["soft"])
         self.log_count = log_sum
 
-        def empty_state(title: str, subtitle: str, icon: ft.IconData, fg: str, bg: str) -> ft.Container:
+        def empty_state(
+            title: str,
+            subtitle: str,
+            icon: ft.IconData,
+            fg: str,
+            bg: str,
+            action: ft.Control | None = None,
+        ) -> ft.Container:
+            children = [
+                _icon_badge(icon, fg=fg, bg=bg, size=42),
+                _txt(title, size=14, weight=ft.FontWeight.W_600),
+                _txt(subtitle, size=12, color=C["muted"]),
+            ]
+            if action is not None:
+                children.append(action)
             return ft.Container(
                 ft.Column(
-                    [
-                        _icon_badge(icon, fg=fg, bg=bg, size=42),
-                        _txt(title, size=14, weight=ft.FontWeight.W_600),
-                        _txt(subtitle, size=11, color=C["muted"]),
-                    ],
-                    spacing=7,
+                    children,
+                    spacing=9,
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
                 expand=True,
                 alignment=ft.Alignment.CENTER,
             )
+
+        def add_room_action() -> ft.Button:
+            return _button(
+                "添加直播间",
+                icon=ft.Icons.ADD_ROUNDED,
+                fg=C["blue"],
+                bg=C["blue_soft"],
+                on_click=self._focus_link,
+            )
+
+        check_action = _button(
+            "检查环境",
+            icon=ft.Icons.REFRESH_ROUNDED,
+            on_click=lambda _e: self._check_cookie(),
+        )
 
         self.chat_empty = empty_state(
             "等待弹幕",
@@ -711,6 +849,7 @@ class Studio:
             ft.Icons.CHAT_BUBBLE_OUTLINE,
             C["blue"],
             C["blue_soft"],
+            add_room_action(),
         )
         self.gift_empty = empty_state(
             "等待礼物",
@@ -718,6 +857,7 @@ class Studio:
             ft.Icons.CARD_GIFTCARD_ROUNDED,
             C["purple"],
             C["purple_soft"],
+            add_room_action(),
         )
         self.log_empty = empty_state(
             "等待运行日志",
@@ -725,6 +865,7 @@ class Studio:
             ft.Icons.INFO_OUTLINE,
             C["muted"],
             C["soft"],
+            check_action,
         )
 
         self.tab_chat = _button(
@@ -782,7 +923,7 @@ class Studio:
             padding=16,
             radius=22,
             expand=True,
-            height=380,
+            height=560,
         )
         self.active_feed = "chat"
         self._set_feed("chat", push=False)
@@ -810,6 +951,16 @@ class Studio:
         self.feed_title.value = titles.get(kind, "实时动态")
         if push:
             self._push()
+
+    def _focus_link(self, _e=None) -> None:
+        try:
+            self.link.focus()
+            self.page.schedule_update()
+        except Exception:
+            try:
+                self.page.update()
+            except Exception:
+                pass
 
     def _open(self, path: Path) -> None:
         try:
@@ -840,7 +991,13 @@ class Studio:
         cookie = _writable_root() / "cookie.txt"
         if not cookie.is_file():
             cookie = MEIPASS / "cookie.txt"
-        has = cookie.is_file() and "sessionid=" in cookie.read_text(encoding="utf-8", errors="replace")
+        has = False
+        if cookie.is_file():
+            raw_cookie = cookie.read_text(encoding="utf-8", errors="replace")
+            # 支持两种常见导出格式：请求头字符串与 Netscape Cookie 文件。
+            has = bool(
+                re.search(r"(^|[;\t])sessionid([=\t])", raw_cookie, re.MULTILINE)
+            )
         self.env.value = (
             f"Node {'OK' if node else '缺'}  ·  FFmpeg {'OK' if ff else '缺'}"
         )
@@ -1032,9 +1189,19 @@ api:
         self.rooms_row.controls.clear()
         for rt in self.rooms.values():
             self.rooms_row.controls.append(self._card(rt))
-        row_height = 200 if self.rooms else 84
+        row_height = 200 if self.rooms else 36
         self.rooms_row.height = row_height
         self.rooms_row_wrap.height = row_height
+
+        if any(rt.running for rt in self.rooms.values()):
+            status_text, status_fg, status_bg = "采集中", C["green"], C["green_soft"]
+        elif self.rooms:
+            status_text, status_fg, status_bg = "已接入", C["blue"], C["blue_soft"]
+        else:
+            status_text, status_fg, status_bg = "等待接入", C["blue"], C["blue_soft"]
+        self.top_status.content.value = status_text
+        self.top_status.content.color = status_fg
+        self.top_status.bgcolor = status_bg
         self._push()
 
     def _card(self, rt: RoomRuntime) -> ft.Control:
@@ -1057,7 +1224,7 @@ api:
                     border_radius=999,
                     bgcolor=status_fg,
                 ),
-                _txt(status_text, size=11, color=status_fg, weight=ft.FontWeight.W_600),
+                _txt(status_text, size=12, color=status_fg, weight=ft.FontWeight.W_600),
             ],
             spacing=6,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -1132,7 +1299,7 @@ api:
                                 value=rt.record,
                                 active_color=C["blue"],
                                 inactive_thumb_color=C["surface"],
-                                inactive_track_color="#D1D1D6",
+                                inactive_track_color="#3A3A55",
                                 on_change=on_record,
                             ),
                             ft.Switch(
@@ -1140,7 +1307,7 @@ api:
                                 value=rt.gift,
                                 active_color=C["blue"],
                                 inactive_thumb_color=C["surface"],
-                                inactive_track_color="#D1D1D6",
+                                inactive_track_color="#3A3A55",
                                 on_change=on_gift,
                             ),
                             ft.Switch(
@@ -1148,7 +1315,7 @@ api:
                                 value=rt.chat,
                                 active_color=C["blue"],
                                 inactive_thumb_color=C["surface"],
-                                inactive_track_color="#D1D1D6",
+                                inactive_track_color="#3A3A55",
                                 on_change=on_chat,
                             ),
                         ],
@@ -1173,7 +1340,7 @@ api:
                                 icon_size=19,
                                 on_click=lambda _e, r=rt: self._remove_room(r),
                             ),
-                            _txt("采集控制", size=11, color=C["muted"]),
+                            _txt("采集控制", size=12, color=C["muted"]),
                         ],
                         spacing=8,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -1262,7 +1429,7 @@ api:
             elif kind == "log":
                 self.log_list.controls.append(
                     ft.Container(
-                        _txt(str(payload), size=11, color=C["muted"]),
+                        _txt(str(payload), size=12, color=C["muted"]),
                         padding=ft.Padding.symmetric(vertical=5, horizontal=8),
                         border_radius=8,
                         bgcolor=C["surface_alt"],
@@ -1301,6 +1468,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
 
 
