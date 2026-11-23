@@ -62,11 +62,42 @@ def http_get_with_retry(session, url, max_retries=3, timeout=15, **kwargs):
     Raises:
         requests.RequestException: 所有重试耗尽后抛出最后一次异常。
     """
+    return _http_request_with_retry(session, 'GET', url, max_retries=max_retries, timeout=timeout, **kwargs)
+
+
+def _http_request_with_retry(session, method, url, max_retries=3, timeout=15,
+                             empty_body_retries=0, **kwargs):
+    """带指数退避的 HTTP 请求（GET/POST）。
+
+    Args:
+        session: requests.Session 实例。
+        method: 'GET' 或 'POST'。
+        url: 请求 URL。
+        max_retries: 连接/超时最大重试次数（含首次）。
+        timeout: 初始超时秒数。
+        empty_body_retries: body 为空时的额外重试次数（抖音风控可能返回 200+空 body）。
+
+    Returns:
+        requests.Response 对象。
+    """
     last_exc = None
-    for attempt in range(max_retries):
+    request_fn = session.post if method.upper() == 'POST' else session.get
+    attempts = max(max_retries, 1) + max(empty_body_retries, 0)
+    for attempt in range(attempts):
         try:
-            resp = session.get(url, timeout=timeout, **kwargs)
+            resp = request_fn(url, timeout=timeout, **kwargs)
             resp.raise_for_status()
+            # 空 body：抖音对 GET/风控常返回 200 + Content-Length 0
+            if empty_body_retries and not (resp.content and resp.text.strip()):
+                last_exc = requests.RequestException(
+                    f'{method} 返回空 body (status={resp.status_code})'
+                )
+                wait = _retry_wait(min(attempt, 3))
+                logger.warning(
+                    f"[网络] {method} 空响应（尝试 {attempt+1}/{attempts}），{wait:.1f}s 后重试"
+                )
+                time.sleep(wait)
+                continue
             return resp
         except requests.exceptions.ConnectionError as e:
             last_exc = e
@@ -85,7 +116,9 @@ def http_get_with_retry(session, url, max_retries=3, timeout=15, **kwargs):
                 time.sleep(min(2 ** attempt, 10))
             else:
                 raise
-    raise last_exc
+    if last_exc:
+        raise last_exc
+    raise requests.RequestException(f'{method} 请求失败')
 
 
 def build_http_headers(ua, ua_version):
@@ -460,18 +493,36 @@ def enter_room_api(ttwid, ua, ua_version, live_id, http_timeout=15, session=None
         'browser_version': browser_ver,
         'web_rid': live_id,
         'msToken': '',
+        'cookie_enabled': 'true',
+        'screen_width': '1920',
+        'screen_height': '1080',
+        'browser_online': 'true',
+        'tz_name': 'Asia/Shanghai',
+        'version_code': VERSION_CODE,
+        'version_name': '18.8.0',
+        'update_version_code': VERSION_CODE,
+        'pc_client_type': '1',
     }
-    url = f'https://live.douyin.com/webcast/room/web/enter/?{urllib.parse.urlencode(params)}'
+    # 抖音已改为 POST 才返回房间 JSON；GET 常见 200 + 空 body，会被误判成未开播
+    url = 'https://live.douyin.com/webcast/room/web/enter/'
+    headers = {
+        'Referer': f'https://live.douyin.com/{live_id}',
+        'Accept': 'application/json, text/plain, */*',
+        'User-Agent': ua,
+        'Origin': 'https://live.douyin.com',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+    }
 
     try:
-        resp = http_get_with_retry(
-            session, url,
-            headers={
-                'Referer': f'https://live.douyin.com/{live_id}',
-                'Accept': 'application/json, text/plain, */*',
-                'User-Agent': ua,
-            },
+        resp = _http_request_with_retry(
+            session, 'POST', url,
+            headers=headers,
+            data=params,
             timeout=http_timeout,
+            empty_body_retries=2,
         )
     finally:
         if owns_session:
@@ -487,6 +538,10 @@ def enter_room_api(ttwid, ua, ua_version, live_id, http_timeout=15, session=None
     resp_text = resp.text
 
     logger.debug(f"[网络] API 响应内容前 500 字符: {resp_text[:500]}")
+
+    if not resp_text or not resp_text.strip():
+        # 不要伪装成“直播间无效”永久退出；空响应多为风控/瞬时故障，交给上层重连/等待
+        raise ValueError(f'房间接口返回空响应 (status_code={resp.status_code})，请稍后重试')
 
     try:
         resp_data = json.loads(resp_text)
